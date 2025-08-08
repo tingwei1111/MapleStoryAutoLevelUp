@@ -23,7 +23,7 @@ class KeyBoardListener():
         self.is_terminated = False
         self.fps = 0
         self.fps_limit = 30
-        self.key_pressing = [] # record the key pressed by user
+        self.key_pressing = set()  # record the keys pressed by user
         self.is_pressed_func_key = [False]*12  # 'F1', 'F2', .... 'F12'
 
         # Timer
@@ -69,7 +69,7 @@ class KeyBoardListener():
 
     def on_release(self, key):
         '''
-        Handle key release events and update key_pressing list.
+        Handle key release events and update key_pressing set.
         '''
         try:
             # Regular keys (like 'a', '1', etc.)
@@ -77,9 +77,8 @@ class KeyBoardListener():
         except AttributeError:
             k = self.movement_keys.get(key, None)
 
-        # Remove the key from key_pressing list if it's in there
-        if k in self.key_pressing:
-            self.key_pressing.remove(k)
+        # Remove the key from key_pressing set if it's in there
+        self.key_pressing.discard(k)
 
     def on_press(self, key):
         '''
@@ -99,8 +98,8 @@ class KeyBoardListener():
 
             k = self.movement_keys.get(key, None)
 
-        if k and k not in self.key_pressing:
-            self.key_pressing.append(k)
+        if k:
+            self.key_pressing.add(k)
 
     def toggle_enable(self):
         '''

@@ -99,7 +99,8 @@ class HealthMonitor:
         - Computes the fill ratio for each bar as: 1 - (empty_pixels / total_pixels).
 
         Returns:
-            tuple: (hp_percent, mp_percent, exp_percent), each a float between 0 and 1.
+            tuple: (hp_percent, mp_percent, exp_percent), each a percentage float
+            in the range 0.0–100.0.
         '''
         if self.img_frame is None:
             return None, None, None
@@ -107,8 +108,8 @@ class HealthMonitor:
         with self.frame_lock:
             img_frame = self.img_frame.copy()
 
-        # Reuse previously detected bar locations if available
-        if any(w > 0 and h > 0 for (_, _, w, h) in self.loc_size_bars):
+        # Reuse previously detected bar locations if all three bars were found
+        if all(w > 0 and h > 0 for (_, _, w, h) in self.loc_size_bars):
             percent_bars = []
             for x, y, w, h in self.loc_size_bars:
                 percent_bars.append(get_bar_percent(img_frame[y:y+h, x:x+w]))

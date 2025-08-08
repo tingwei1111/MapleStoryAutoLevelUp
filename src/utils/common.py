@@ -581,9 +581,10 @@ def debug_minimap_colors(img_minimap, target_color=(0, 0, 255)):
 
 def get_bar_percent(img):
     '''
-    Get HP/MP/EXP bar ratio with given bar image
+    Get HP/MP/EXP bar fill percentage for a given bar image.
 
-    Return: float [0.0 - 1.0]
+    Returns:
+        float: percentage in the range 0.0–100.0.
     '''
     # Sample a horizontal line at the vertical center of the bar
     h, w = img.shape[:2]
@@ -603,21 +604,22 @@ def get_bar_percent(img):
     if rb <= lb:
         return 0.0
 
-    # Get unfill pixel count in bar
-    unfill_pixel_cnt = 0
+    # Get unfill pixel count in bar using vectorized operations
     tolerance = 10
-    for i in range(lb, rb + 1):
-        r, g, b = line_pixels[i]
-        if  abs(int(r) - int(g)) <= tolerance and \
-            abs(int(r) - int(b)) <= tolerance and \
-            int(r) > 0:
-            unfill_pixel_cnt += 1
+    segment = line_pixels[lb:rb + 1].astype(int)
+    r, g, b = segment[:, 0], segment[:, 1], segment[:, 2]
+    grayish = (
+        (np.abs(r - g) <= tolerance) &
+        (np.abs(r - b) <= tolerance) &
+        (r > 0)
+    )
+    unfill_pixel_cnt = np.count_nonzero(grayish)
 
     # Compute fill ratio
     total_width = rb - lb + 1
     fill_width = total_width - unfill_pixel_cnt
     fill_ratio = fill_width / total_width if total_width > 0 else 0.0
-    return fill_ratio*100
+    return fill_ratio * 100
 
 def nms_matches(matches, iou_thresh=0.0):
     '''
