@@ -176,22 +176,45 @@ def nms(monsters, iou_threshold=0.3):
     Returns:
     - List of filtered monster dictionaries after applying NMS
     '''
+    if not monsters:
+        return []
+
     boxes = []
+    scores = []
     for m in monsters:
         x, y = m["position"]
         w, h = m["size"]
-        # [x1, y1, x2, y2, score, original_data]
-        boxes.append([x, y, x + w, y + h, m["score"], m])
+        boxes.append([x, y, x + w, y + h])
+        scores.append(m["score"])
 
-    # Sort by score descending
-    boxes.sort(key=lambda x: x[4], reverse=True)
+    boxes = np.array(boxes)
+    scores = np.array(scores)
+    order = scores.argsort()[::-1]
 
     keep = []
-    while boxes:
-        best = boxes.pop(0)
-        keep.append(best[5])  # original monster_info
+    while order.size > 0:
+        i = order[0]
+        keep.append(monsters[i])
+        if order.size == 1:
+            break
 
-        boxes = [b for b in boxes if get_iou(best, b) < iou_threshold]
+        rest = order[1:]
+
+        xx1 = np.maximum(boxes[i, 0], boxes[rest, 0])
+        yy1 = np.maximum(boxes[i, 1], boxes[rest, 1])
+        xx2 = np.minimum(boxes[i, 2], boxes[rest, 2])
+        yy2 = np.minimum(boxes[i, 3], boxes[rest, 3])
+
+        w = np.maximum(0, xx2 - xx1)
+        h = np.maximum(0, yy2 - yy1)
+        inter = w * h
+
+        area_i = (boxes[i, 2] - boxes[i, 0]) * (boxes[i, 3] - boxes[i, 1])
+        area_rest = (boxes[rest, 2] - boxes[rest, 0]) * (boxes[rest, 3] - boxes[rest, 1])
+        union = area_i + area_rest - inter
+        ious = inter / union
+
+        order = rest[ious < iou_threshold]
 
     return keep
 

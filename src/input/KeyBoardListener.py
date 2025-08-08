@@ -17,7 +17,7 @@ class KeyBoardListener():
     '''
     def __init__(self, cfg=None, is_autobot=True):
         self.cfg = cfg
-        self.t_last_run = time.time()
+        self.t_last_run = time.perf_counter()
         self.is_enable = True
         self.debounce_interval = 1 # second
         self.is_terminated = False
@@ -144,13 +144,13 @@ class KeyBoardListener():
         '''
         # If the loop finished early, sleep to maintain target FPS
         target_duration = 1.0 / self.fps_limit  # seconds per frame
-        frame_duration = time.time() - self.t_last_run
+        frame_duration = time.perf_counter() - self.t_last_run
         if frame_duration < target_duration:
             time.sleep(target_duration - frame_duration)
 
         # Update FPS
-        self.fps = round(1.0 / (time.time() - self.t_last_run))
-        self.t_last_run = time.time()
+        self.fps = round(1.0 / (time.perf_counter() - self.t_last_run))
+        self.t_last_run = time.perf_counter()
         # logger.info(f"FPS = {self.fps}")
 
     def run_for_route_recorder(self):

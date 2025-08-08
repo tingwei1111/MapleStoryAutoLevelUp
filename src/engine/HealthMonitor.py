@@ -33,7 +33,7 @@ class HealthMonitor:
         self.t_last_heal = 0
         self.t_last_mp = 0
         self.t_last_hp_reduce = 0
-        self.t_last_run = 0
+        self.t_last_run = time.perf_counter()
         self.t_hp_watch_dog = time.time()
 
         # Frame data (will be updated by main thread)
@@ -107,9 +107,15 @@ class HealthMonitor:
         with self.frame_lock:
             img_frame = self.img_frame.copy()
 
+        # Reuse previously detected bar locations if available
+        if any(w > 0 and h > 0 for (_, _, w, h) in self.loc_size_bars):
+            percent_bars = []
+            for x, y, w, h in self.loc_size_bars:
+                percent_bars.append(get_bar_percent(img_frame[y:y+h, x:x+w]))
+            return percent_bars
+
         img_frame_gray = cv2.cvtColor(img_frame, cv2.COLOR_BGR2GRAY)
         white_mask = cv2.inRange(img_frame_gray, 240, 255)
-        # cv2.imshow("white_mask", white_mask)
 
         contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -120,15 +126,12 @@ class HealthMonitor:
             if 4 < w/h < 10 and 2500 < w*h < 5000:
                 loc_size_bars.append((x, y, w, h))
 
-        # sort contours by x coordinate
         loc_size_bars = sorted(loc_size_bars, key=lambda bar: bar[0])
         if len(loc_size_bars) != 3:
             return (None, None, None)
 
-        # Update loc_size_bars
         self.loc_size_bars = loc_size_bars
 
-        # Get bar filled ratio
         percent_bars = []
         for x, y, w, h in loc_size_bars:
             percent_bars.append(get_bar_percent(img_frame[y:y+h, x:x+w]))
@@ -233,11 +236,11 @@ class HealthMonitor:
         '''
         # If the loop finished early, sleep to maintain target FPS
         target_duration = 1.0 / self.fps_limit  # seconds per frame
-        frame_duration = time.time() - self.t_last_run
+        frame_duration = time.perf_counter() - self.t_last_run
         if frame_duration < target_duration:
             time.sleep(target_duration - frame_duration)
 
         # Update FPS
-        self.fps = round(1.0 / (time.time() - self.t_last_run))
-        self.t_last_run = time.time()
+        self.fps = round(1.0 / (time.perf_counter() - self.t_last_run))
+        self.t_last_run = time.perf_counter()
         # logger.info(f"FPS = {self.fps}")
