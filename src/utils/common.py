@@ -176,22 +176,45 @@ def nms(monsters, iou_threshold=0.3):
     Returns:
     - List of filtered monster dictionaries after applying NMS
     '''
+    if not monsters:
+        return []
+
     boxes = []
+    scores = []
     for m in monsters:
         x, y = m["position"]
         w, h = m["size"]
-        # [x1, y1, x2, y2, score, original_data]
-        boxes.append([x, y, x + w, y + h, m["score"], m])
+        boxes.append([x, y, x + w, y + h])
+        scores.append(m["score"])
 
-    # Sort by score descending
-    boxes.sort(key=lambda x: x[4], reverse=True)
+    boxes = np.array(boxes)
+    scores = np.array(scores)
+    order = scores.argsort()[::-1]
 
     keep = []
-    while boxes:
-        best = boxes.pop(0)
-        keep.append(best[5])  # original monster_info
+    while order.size > 0:
+        i = order[0]
+        keep.append(monsters[i])
+        if order.size == 1:
+            break
 
-        boxes = [b for b in boxes if get_iou(best, b) < iou_threshold]
+        rest = order[1:]
+
+        xx1 = np.maximum(boxes[i, 0], boxes[rest, 0])
+        yy1 = np.maximum(boxes[i, 1], boxes[rest, 1])
+        xx2 = np.minimum(boxes[i, 2], boxes[rest, 2])
+        yy2 = np.minimum(boxes[i, 3], boxes[rest, 3])
+
+        w = np.maximum(0, xx2 - xx1)
+        h = np.maximum(0, yy2 - yy1)
+        inter = w * h
+
+        area_i = (boxes[i, 2] - boxes[i, 0]) * (boxes[i, 3] - boxes[i, 1])
+        area_rest = (boxes[rest, 2] - boxes[rest, 0]) * (boxes[rest, 3] - boxes[rest, 1])
+        union = area_i + area_rest - inter
+        ious = inter / union
+
+        order = rest[ious < iou_threshold]
 
     return keep
 
@@ -558,9 +581,10 @@ def debug_minimap_colors(img_minimap, target_color=(0, 0, 255)):
 
 def get_bar_percent(img):
     '''
-    Get HP/MP/EXP bar ratio with given bar image
+    Get HP/MP/EXP bar fill percentage for a given bar image.
 
-    Return: float [0.0 - 1.0]
+    Returns:
+        float: percentage in the range 0.0–100.0.
     '''
     # Sample a horizontal line at the vertical center of the bar
     h, w = img.shape[:2]
@@ -580,21 +604,22 @@ def get_bar_percent(img):
     if rb <= lb:
         return 0.0
 
-    # Get unfill pixel count in bar
-    unfill_pixel_cnt = 0
+    # Get unfill pixel count in bar using vectorized operations
     tolerance = 10
-    for i in range(lb, rb + 1):
-        r, g, b = line_pixels[i]
-        if  abs(int(r) - int(g)) <= tolerance and \
-            abs(int(r) - int(b)) <= tolerance and \
-            int(r) > 0:
-            unfill_pixel_cnt += 1
+    segment = line_pixels[lb:rb + 1].astype(int)
+    r, g, b = segment[:, 0], segment[:, 1], segment[:, 2]
+    grayish = (
+        (np.abs(r - g) <= tolerance) &
+        (np.abs(r - b) <= tolerance) &
+        (r > 0)
+    )
+    unfill_pixel_cnt = np.count_nonzero(grayish)
 
     # Compute fill ratio
     total_width = rb - lb + 1
     fill_width = total_width - unfill_pixel_cnt
     fill_ratio = fill_width / total_width if total_width > 0 else 0.0
-    return fill_ratio*100
+    return fill_ratio * 100
 
 def nms_matches(matches, iou_thresh=0.0):
     '''

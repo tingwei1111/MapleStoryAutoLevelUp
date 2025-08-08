@@ -17,13 +17,13 @@ class KeyBoardListener():
     '''
     def __init__(self, cfg=None, is_autobot=True):
         self.cfg = cfg
-        self.t_last_run = time.time()
+        self.t_last_run = time.perf_counter()
         self.is_enable = True
         self.debounce_interval = 1 # second
         self.is_terminated = False
         self.fps = 0
         self.fps_limit = 30
-        self.key_pressing = [] # record the key pressed by user
+        self.key_pressing = set()  # record the keys pressed by user
         self.is_pressed_func_key = [False]*12  # 'F1', 'F2', .... 'F12'
 
         # Timer
@@ -69,7 +69,7 @@ class KeyBoardListener():
 
     def on_release(self, key):
         '''
-        Handle key release events and update key_pressing list.
+        Handle key release events and update key_pressing set.
         '''
         try:
             # Regular keys (like 'a', '1', etc.)
@@ -77,9 +77,8 @@ class KeyBoardListener():
         except AttributeError:
             k = self.movement_keys.get(key, None)
 
-        # Remove the key from key_pressing list if it's in there
-        if k in self.key_pressing:
-            self.key_pressing.remove(k)
+        # Remove the key from key_pressing set if it's in there
+        self.key_pressing.discard(k)
 
     def on_press(self, key):
         '''
@@ -99,8 +98,8 @@ class KeyBoardListener():
 
             k = self.movement_keys.get(key, None)
 
-        if k and k not in self.key_pressing:
-            self.key_pressing.append(k)
+        if k:
+            self.key_pressing.add(k)
 
     def toggle_enable(self):
         '''
@@ -144,13 +143,13 @@ class KeyBoardListener():
         '''
         # If the loop finished early, sleep to maintain target FPS
         target_duration = 1.0 / self.fps_limit  # seconds per frame
-        frame_duration = time.time() - self.t_last_run
+        frame_duration = time.perf_counter() - self.t_last_run
         if frame_duration < target_duration:
             time.sleep(target_duration - frame_duration)
 
         # Update FPS
-        self.fps = round(1.0 / (time.time() - self.t_last_run))
-        self.t_last_run = time.time()
+        self.fps = round(1.0 / (time.perf_counter() - self.t_last_run))
+        self.t_last_run = time.perf_counter()
         # logger.info(f"FPS = {self.fps}")
 
     def run_for_route_recorder(self):

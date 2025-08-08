@@ -81,7 +81,7 @@ class KeyBoardController():
         self.t_last_toggle = 0.0
         self.t_last_screenshot = 0.0
         self.t_last_jump_down = 0.0
-        self.t_last_run = time.time()
+        self.t_last_run = time.perf_counter()
         self.t_last_skill = 0.0 # Last time character perform action(attack, cast spell, ...)
         self.t_last_buff_cast = [0] * len(self.cfg["buff_skill"]["keys"]) # Last time cast buff skill
         # Flags
@@ -189,13 +189,13 @@ class KeyBoardController():
         '''
         # If the loop finished early, sleep to maintain target FPS
         target_duration = 1.0 / self.fps_limit  # seconds per frame
-        frame_duration = time.time() - self.t_last_run
+        frame_duration = time.perf_counter() - self.t_last_run
         if frame_duration < target_duration:
             time.sleep(target_duration - frame_duration)
 
         # Update FPS
-        self.fps = round(1.0 / (time.time() - self.t_last_run))
-        self.t_last_run = time.time()
+        self.fps = round(1.0 / (time.perf_counter() - self.t_last_run))
+        self.t_last_run = time.perf_counter()
         # logger.info(f"FPS = {self.fps}")
 
     def run(self):

@@ -69,7 +69,7 @@ class GameWindowCapturor:
 
         self.fps = 0
         self.fps_limit = cfg["system"]["fps_limit_window_capturor"]
-        self.t_last_run = 0.0
+        self.t_last_run = time.perf_counter()
 
         # 使用 mss 來擷取特定螢幕區域
         self.capture = mss.mss()
@@ -148,11 +148,11 @@ class GameWindowCapturor:
         '''
         # If the loop finished early, sleep to maintain target FPS
         target_duration = 1.0 / self.fps_limit  # seconds per frame
-        frame_duration = time.time() - self.t_last_run
+        frame_duration = time.perf_counter() - self.t_last_run
         if frame_duration < target_duration:
             time.sleep(target_duration - frame_duration)
 
         # Update FPS
-        self.fps = round(1.0 / (time.time() - self.t_last_run))
-        self.t_last_run = time.time()
+        self.fps = round(1.0 / (time.perf_counter() - self.t_last_run))
+        self.t_last_run = time.perf_counter()
         # logger.info(f"FPS = {self.fps}")
