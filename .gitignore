@@ -12,3 +12,5 @@ test/
 *config_custom.yaml
 *.exe
 *.spec
+venv/
+.venv/

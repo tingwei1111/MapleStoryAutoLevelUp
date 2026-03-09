@@ -1,0 +1,10 @@
+bot:
+  map: empty_house
+game_window:
+  size: [691, 1280]
+  title_bar_height: 85
+key:
+  jump: x
+  return_home: "\u2196"
+monster_detect:
+  diff_thres: 1.5

@@ -59,23 +59,31 @@ class GameWindowCapturor:
         self.frame = None
         self.lock = threading.Lock()
         self.is_terminated = False
+        self.region = None
 
         self.window_title = get_window_title(cfg["game_window"]["title"])
         if self.window_title is None:
-            logger.error(
-                f"[GameWindowCapturor] Unable to find window titles that contain {cfg['game_window']['title']}"
+            text = (
+                f"[GameWindowCapturor] Unable to find window titles that contain "
+                f"{cfg['game_window']['title']}"
             )
-            return -1
+            logger.error(text)
+            raise RuntimeError(text)
 
         self.fps = 0
         self.fps_limit = cfg["system"]["fps_limit_window_capturor"]
         self.t_last_run = 0.0
+        self.t_last_region_refresh = 0.0
+        self.region_refresh_interval_sec = cfg["system"].get(
+            "window_region_refresh_interval_sec", 1.0
+        )
+        self.force_region_refresh = True
 
         # 使用 mss 來擷取特定螢幕區域
         self.capture = mss.mss()
 
         # Get game window region
-        self.update_window_region()
+        self.update_window_region(strict=True)
 
         # start game window capture
         threading.Thread(target=self.start_capture, daemon=True).start()
@@ -90,11 +98,22 @@ class GameWindowCapturor:
         開始螢幕擷取，並不斷更新 frame。
         '''
         while not self.is_terminated:
-            # Update self.region
-            self.update_window_region()
+            # Refresh region periodically or when capture fails.
+            is_time_to_refresh = (
+                time.time() - self.t_last_region_refresh >= self.region_refresh_interval_sec
+            )
+            if self.force_region_refresh or self.region is None or is_time_to_refresh:
+                if not self.update_window_region():
+                    self.limit_fps()
+                    continue
+                self.force_region_refresh = False
 
-            # Update self.frame
-            self.capture_frame()
+            try:
+                # Update self.frame
+                self.capture_frame()
+            except Exception as e:
+                logger.warning(f"[GameWindowCapturor] capture_frame failed: {e}")
+                self.force_region_refresh = True
 
             # Limit FPS to save systme resources
             self.limit_fps()
@@ -106,15 +125,22 @@ class GameWindowCapturor:
         self.is_terminated = True
         logger.info("[GameWindowCapturor] Terminated")
 
-    def update_window_region(self):
+    def update_window_region(self, strict=False):
         '''
         Update window region
         '''
-        self.region = get_window_region(self.window_title)
-        if self.region is None:
+        region = get_window_region(self.window_title)
+        if region is None:
             text = f"Cannot find window: {self.window_title}"
-            logger.error(text)
-            raise RuntimeError(text)
+            if strict:
+                logger.error(text)
+                raise RuntimeError(text)
+            logger.warning(text)
+            return False
+
+        self.region = region
+        self.t_last_region_refresh = time.time()
+        return True
 
     def capture_frame(self):
         '''

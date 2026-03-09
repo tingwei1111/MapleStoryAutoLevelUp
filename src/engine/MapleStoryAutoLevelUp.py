@@ -58,6 +58,9 @@ class MapleStoryAutoBot:
         self.monsters_info = {} # monster information
         self.monsters = [] # monster detected in current frame
         self.fps = 0 # Frame per second
+        self.min_mob_area = None # cached smallest monster template area
+        self.min_mob_height = None # cached smallest monster template height
+        self.monster_overlap_area_thres = None # cached overlap area threshold
         self.red_dot_center_prev = None # previous other player location in minimap
         self.video_writer = None # For video recording feature
         self.color_code = {} # For color code instruction
@@ -201,6 +204,14 @@ class MapleStoryAutoBot:
                     # raise RuntimeError(f"No images found in monster/{monster_name}/{monster_name}*")
             logger.info(f"Loaded monsters: {list(self.monsters_info.keys())}")
 
+            # Cache monster geometry used in per-frame hot paths.
+            all_monster_imgs = [
+                img for imgs in self.monsters_info.values() for img, _ in imgs
+            ]
+            if all_monster_imgs:
+                self.min_mob_area = min(img.shape[0] * img.shape[1] for img in all_monster_imgs)
+                self.min_mob_height = min(img.shape[0] for img in all_monster_imgs)
+
         # Load player's name tag
         if cfg["nametag"]["enable"]:
             self.img_nametag = load_image(f"nametag/{cfg['nametag']['name']}.png")
@@ -242,6 +253,11 @@ class MapleStoryAutoBot:
 
         # Update cfg
         self.cfg = cfg
+        if self.min_mob_area is not None:
+            self.monster_overlap_area_thres = min(
+                self.min_mob_area,
+                self.cfg['monster_detect']['max_mob_area_trigger']
+            )
 
         return 0 # load successfully
 
@@ -465,13 +481,14 @@ class MapleStoryAutoBot:
         # Draw name tag detection box for debugging
         draw_rectangle(self.img_frame_debug, self.loc_nametag,
                        self.img_nametag.shape, (0, 255, 0), "")
-        text = f"NameTag,{round(score, 2)}," + \
-                f"{'cached' if is_cached else 'missed'}," + \
-                f"{tag_type}"
-        cv2.putText(self.img_frame_debug, text,
-                    (self.loc_nametag[0],
-                     self.loc_nametag[1] + self.img_nametag.shape[0] + 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        if self.img_frame_debug is not None:
+            text = f"NameTag,{round(score, 2)}," + \
+                    f"{'cached' if is_cached else 'missed'}," + \
+                    f"{tag_type}"
+            cv2.putText(self.img_frame_debug, text,
+                        (self.loc_nametag[0],
+                         self.loc_nametag[1] + self.img_nametag.shape[0] + 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
         return loc_player
 
@@ -548,20 +565,21 @@ class MapleStoryAutoBot:
             self.loc_minimap_global[0] + self.img_minimap.shape[1],
             self.loc_minimap_global[1] + self.img_minimap.shape[0]
         )
-        cv2.rectangle(self.img_route_debug, self.loc_minimap_global,
-                      camera_bottom_right, (0, 255, 255), 1)
-        cv2.putText(
-            self.img_route_debug,
-            f"Minimap,score({round(score, 2)})",
-            (self.loc_minimap_global[0], self.loc_minimap_global[1]+15),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.4,
-            (0, 255, 255), 1
-        )
+        if self.img_route_debug is not None:
+            cv2.rectangle(self.img_route_debug, self.loc_minimap_global,
+                          camera_bottom_right, (0, 255, 255), 1)
+            cv2.putText(
+                self.img_route_debug,
+                f"Minimap,score({round(score, 2)})",
+                (self.loc_minimap_global[0], self.loc_minimap_global[1]+15),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.4,
+                (0, 255, 255), 1
+            )
 
-        # Draw player center
-        cv2.circle(self.img_route_debug,
-                   loc_player_global, radius=2,
-                   color=(0, 255, 255), thickness=-1)
+            # Draw player center
+            cv2.circle(self.img_route_debug,
+                       loc_player_global, radius=2,
+                       color=(0, 255, 255), thickness=-1)
 
         return loc_player_global
 
@@ -628,41 +646,45 @@ class MapleStoryAutoBot:
         )
         # Draw a straigt line from map_loc_player to color_code["pixel"]
         if nearest is not None:
-            cv2.line(
-                self.img_route_debug,
-                self.loc_player_global, # start point
-                nearest["pixel"],       # end point
-                (0, 255, 0),            # green line
-                1                       # thickness
-            )
+            if self.img_route_debug is not None:
+                cv2.line(
+                    self.img_route_debug,
+                    self.loc_player_global, # start point
+                    nearest["pixel"],       # end point
+                    (0, 255, 0),            # green line
+                    1                       # thickness
+                )
             # Print color code on debug image
-            cv2.putText(
-                self.img_frame_debug, f"Route Action: {nearest['command']}",
-                (650, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255),
-                2, cv2.LINE_AA
-            )
-            cv2.putText(
-                self.img_frame_debug, f"Route Index: {self.idx_routes}",
-                (650, 90),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255),
-                2, cv2.LINE_AA
-            )
+            if self.img_frame_debug is not None:
+                cv2.putText(
+                    self.img_frame_debug, f"Route Action: {nearest['command']}",
+                    (650, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255),
+                    2, cv2.LINE_AA
+                )
+                cv2.putText(
+                    self.img_frame_debug, f"Route Index: {self.idx_routes}",
+                    (650, 90),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255),
+                    2, cv2.LINE_AA
+                )
 
         if nearest_up_down is not None:
-            cv2.putText(
-                self.img_frame_debug, f"Route Action: {nearest_up_down['command']}",
-                (650, 60),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255),
-                2, cv2.LINE_AA
-            )
-            cv2.line(
-                self.img_route_debug,
-                self.loc_player_global,  # start point
-                nearest_up_down["pixel"],# end point
-                (0, 0, 255),             # green line
-                1                        # thickness
-            )
+            if self.img_frame_debug is not None:
+                cv2.putText(
+                    self.img_frame_debug, f"Route Action: {nearest_up_down['command']}",
+                    (650, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255),
+                    2, cv2.LINE_AA
+                )
+            if self.img_route_debug is not None:
+                cv2.line(
+                    self.img_route_debug,
+                    self.loc_player_global,  # start point
+                    nearest_up_down["pixel"],# end point
+                    (0, 0, 255),             # green line
+                    1                        # thickness
+                )
 
         return nearest, nearest_up_down  # if not found return none
 
@@ -730,8 +752,21 @@ class MapleStoryAutoBot:
             ih = max(0, iy2 - iy1)
             inter_area = iw * ih
 
-            min_mob_area = min(img.shape[0]*img.shape[1] for _, imgs in self.monsters_info.items() for img, _ in imgs)
-            inter_area_thres = min(min_mob_area, self.cfg['monster_detect']['max_mob_area_trigger'])
+            inter_area_thres = self.monster_overlap_area_thres
+            if inter_area_thres is None:
+                if self.monsters_info:
+                    min_mob_area = min(
+                        img.shape[0] * img.shape[1]
+                        for _, imgs in self.monsters_info.items()
+                        for img, _ in imgs
+                    )
+                    inter_area_thres = min(
+                        min_mob_area,
+                        self.cfg['monster_detect']['max_mob_area_trigger']
+                    )
+                else:
+                    inter_area_thres = self.cfg['monster_detect']['max_mob_area_trigger']
+                self.monster_overlap_area_thres = inter_area_thres
             if inter_area >= inter_area_thres:
                 # Compute distance to player center
                 monster_center = (mx1 + mw // 2, my1 + mh // 2)
@@ -766,69 +801,89 @@ class MapleStoryAutoBot:
         char_y_max = min(img_roi.shape[0], py_in_roi + self.cfg["character"]["height"] // 2)
 
         monsters = []
-        for monster_name, monster_imgs in self.monsters_info.items():
-            for img_monster, mask_monster in monster_imgs:
-                if self.cfg["bot"]["mode"] == "patrol":
-                    pass # Don't detect monster using template in patrol mode
-                elif self.cfg["monster_detect"]["mode"] == "template_free":
-                    # Generate mask where pixel is exactly (0,0,0)
-                    black_mask = np.all(img_roi == [0, 0, 0], axis=2).astype(np.uint8) * 255
-                    # cv2.imshow("Black Pixel Mask", black_mask)
+        monster_detect_mode = self.cfg["monster_detect"]["mode"]
 
-                    # Zero out mask inside this region (ignore player's own character)
-                    black_mask[char_y_min:char_y_max, char_x_min:char_x_max] = 0
+        if self.cfg["bot"]["mode"] == "patrol":
+            pass  # Don't detect monster using template in patrol mode
 
-                    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (20, 20))
-                    closed_mask = cv2.morphologyEx(black_mask, cv2.MORPH_CLOSE, kernel)
-                    # cv2.imshow("Black Mask", closed_mask)
+        elif monster_detect_mode == "template_free":
+            # Generate mask where pixel is exactly (0,0,0)
+            black_mask = np.all(img_roi == [0, 0, 0], axis=2).astype(np.uint8) * 255
+            # Zero out mask inside this region (ignore player's own character)
+            black_mask[char_y_min:char_y_max, char_x_min:char_x_max] = 0
 
-                    # draw player character bounding box
-                    draw_rectangle(
-                        self.img_frame_debug, (char_x_min+x0, char_y_min+y0),
-                        (self.cfg["character"]["height"], self.cfg["character"]["width"]),
-                        (255, 0, 0), "Character Box"
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (20, 20))
+            closed_mask = cv2.morphologyEx(black_mask, cv2.MORPH_CLOSE, kernel)
+
+            draw_rectangle(
+                self.img_frame_debug, (char_x_min + x0, char_y_min + y0),
+                (self.cfg["character"]["height"], self.cfg["character"]["width"]),
+                (255, 0, 0), "Character Box"
+            )
+
+            num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(
+                closed_mask, connectivity=8
+            )
+
+            min_area = 1000
+            for i in range(1, num_labels):
+                x, y, w, h, area = stats[i]
+                if area > min_area:
+                    monsters.append({
+                        "name": "",
+                        "position": (x0 + x, y0 + y),
+                        "size": (h, w),
+                        "score": 1.0,
+                    })
+
+        elif monster_detect_mode in ("contour_only", "grayscale", "color"):
+            img_roi_blur = None
+            img_roi_gray = None
+            if monster_detect_mode == "contour_only":
+                # Precompute ROI mask once per frame.
+                mask_roi = np.all(img_roi == [0, 0, 0], axis=2).astype(np.uint8) * 255
+                mask_roi[char_y_min:char_y_max, char_x_min:char_x_max] = 0
+                blur = self.cfg["monster_detect"]["contour_blur"]
+                img_roi_blur = cv2.GaussianBlur(mask_roi, (blur, blur), 0)
+            elif monster_detect_mode == "grayscale":
+                img_roi_gray = cv2.cvtColor(img_roi, cv2.COLOR_BGR2GRAY)
+
+            for monster_name, monster_imgs in self.monsters_info.items():
+                for img_monster, mask_monster in monster_imgs:
+                    if monster_detect_mode == "contour_only":
+                        mask_pattern = np.all(
+                            img_monster == [0, 0, 0], axis=2
+                        ).astype(np.uint8) * 255
+                        blur = self.cfg["monster_detect"]["contour_blur"]
+                        img_monster_blur = cv2.GaussianBlur(mask_pattern, (blur, blur), 0)
+
+                        h_roi, w_roi = img_roi_blur.shape[:2]
+                        h_temp, w_temp = img_monster_blur.shape[:2]
+                        if h_temp > h_roi or w_temp > w_roi:
+                            continue  # template bigger than roi, skip this matching
+
+                        res = cv2.matchTemplate(
+                            img_roi_blur, img_monster_blur, cv2.TM_SQDIFF_NORMED
+                        )
+                    elif monster_detect_mode == "grayscale":
+                        img_monster_gray = cv2.cvtColor(img_monster, cv2.COLOR_BGR2GRAY)
+                        res = cv2.matchTemplate(
+                            img_roi_gray,
+                            img_monster_gray,
+                            cv2.TM_SQDIFF_NORMED,
+                            mask=mask_monster
+                        )
+                    else:  # color
+                        res = cv2.matchTemplate(
+                            img_roi,
+                            img_monster,
+                            cv2.TM_SQDIFF_NORMED,
+                            mask=mask_monster
+                        )
+
+                    match_locations = np.where(
+                        res <= self.cfg["monster_detect"]["diff_thres"]
                     )
-
-                    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(closed_mask, connectivity=8)
-
-                    monsters = []
-                    min_area = 1000
-                    for i in range(1, num_labels):
-                        x, y, w, h, area = stats[i]
-                        if area > min_area:
-                            monsters.append({
-                                "name": "",
-                                "position": (x0+x, y0+y),
-                                "size": (h, w),
-                                "score": 1.0,
-                            })
-                elif self.cfg["monster_detect"]["mode"] == "contour_only":
-                    # Use only black lines contour to detect monsters
-                    # Create masks (already grayscale)
-                    mask_pattern = np.all(img_monster == [0, 0, 0], axis=2).astype(np.uint8) * 255
-                    mask_roi = np.all(img_roi == [0, 0, 0], axis=2).astype(np.uint8) * 255
-
-                    # Zero out mask inside this region (ignore player's own character)
-                    mask_roi[char_y_min:char_y_max, char_x_min:char_x_max] = 0
-
-                    # Apply Gaussian blur (soften the masks)
-                    blur = self.cfg["monster_detect"]["contour_blur"]
-                    img_monster_blur = cv2.GaussianBlur(mask_pattern, (blur, blur), 0)
-                    img_roi_blur = cv2.GaussianBlur(mask_roi, (blur, blur), 0)
-
-                    # Check template vs ROI size before matching
-                    h_roi, w_roi = img_roi_blur.shape[:2]
-                    h_temp, w_temp = img_monster_blur.shape[:2]
-
-                    if h_temp > h_roi or w_temp > w_roi:
-                        return []  # template bigger than roi, skip this matching
-
-                    # Perform template matching
-                    res = cv2.matchTemplate(img_roi_blur, img_monster_blur, cv2.TM_SQDIFF_NORMED)
-
-                    # Apply soft threshold
-                    match_locations = np.where(res <= self.cfg["monster_detect"]["diff_thres"])
-
                     h, w = img_monster.shape[:2]
                     for pt in zip(*match_locations[::-1]):
                         monsters.append({
@@ -837,41 +892,11 @@ class MapleStoryAutoBot:
                             "size": (h, w),
                             "score": res[pt[1], pt[0]],
                         })
-                elif self.cfg["monster_detect"]["mode"] == "grayscale":
-                    img_monster_gray = cv2.cvtColor(img_monster, cv2.COLOR_BGR2GRAY)
-                    img_roi_gray = cv2.cvtColor(img_roi, cv2.COLOR_BGR2GRAY)
-                    res = cv2.matchTemplate(
-                            img_roi_gray,
-                            img_monster_gray,
-                            cv2.TM_SQDIFF_NORMED,
-                            mask=mask_monster)
-                    match_locations = np.where(res <= self.cfg["monster_detect"]["diff_thres"])
-                    h, w = img_monster.shape[:2]
-                    for pt in zip(*match_locations[::-1]):
-                        monsters.append({
-                            "name": monster_name,
-                            "position": (pt[0] + x0, pt[1] + y0),
-                            "size": (h, w),
-                            "score": res[pt[1], pt[0]],
-                    })
-                elif self.cfg["monster_detect"]["mode"] == "color":
-                    res = cv2.matchTemplate(
-                            img_roi,
-                            img_monster,
-                            cv2.TM_SQDIFF_NORMED,
-                            mask=mask_monster)
-                    match_locations = np.where(res <= self.cfg["monster_detect"]["diff_thres"])
-                    h, w = img_monster.shape[:2]
-                    for pt in zip(*match_locations[::-1]):
-                        monsters.append({
-                            "name": monster_name,
-                            "position": (pt[0] + x0, pt[1] + y0),
-                            "size": (h, w),
-                            "score": res[pt[1], pt[0]],
-                    })
-                else:
-                    logger.error(f"Unexpected camera localization mode: {self.cfg['monster_detect']['mode']}")
-                    return []
+        else:
+            logger.error(
+                f"Unexpected camera localization mode: {monster_detect_mode}"
+            )
+            return []
 
         # Apply Non-Maximum Suppression to monster detection
         monsters = nms(monsters, iou_threshold=0.4)
@@ -897,7 +922,16 @@ class MapleStoryAutoBot:
                 x = max(0, x)
                 y = max(0, y)
                 w = 70
-                h = min(img.shape[0] for _, imgs in self.monsters_info.items() for img, _ in imgs)
+                if self.min_mob_height is None:
+                    if self.monsters_info:
+                        self.min_mob_height = min(
+                            img.shape[0]
+                            for _, imgs in self.monsters_info.items()
+                            for img, _ in imgs
+                        )
+                    else:
+                        self.min_mob_height = 30
+                h = self.min_mob_height
 
                 monsters.append({
                     "name": "Health Bar",
@@ -1057,11 +1091,12 @@ class MapleStoryAutoBot:
         if coords.size == 0:
             return ""
 
-        # Calculate mean position of matching pixels
+        # Calculate mean position of matching pixels (convert to global X)
         mean_x = np.mean(coords[:, 1])
+        mean_x_global = x_min + mean_x
 
-        # Compare to roi center
-        if mean_x < x0:
+        # Compare to player global X
+        if mean_x_global < x0:
             return "edge on left"
         else:
             return "edge on right"
@@ -1245,11 +1280,17 @@ class MapleStoryAutoBot:
                 loc_login_button = self.get_login_button_location()
                 if loc_login_button is None:
                     logger.info("Waiting for login button to show up...")
-            except Exception as e:
-                logger.warning(f"Exception occurred while waiting for login button: {e}")
+            except (cv2.error, AttributeError, TypeError) as e:
+                logger.warning(f"Image processing error while waiting for login button: {e}")
                 if not is_mac():
                     resize_window(window_title, width=1296, height=759)
                 logger.info("Retrying login button detection...")
+            except (OSError, IOError) as e:
+                logger.warning(f"File system error during login button detection: {e}")
+                logger.info("Retrying login button detection...")
+            except Exception as e:
+                logger.error(f"Unexpected error during login button detection: {e}")
+                break
 
             time.sleep(3)
         logger.info(f"login_button button found: {loc_login_button}")
@@ -1763,6 +1804,20 @@ class MapleStoryAutoBot:
             activate_game_window(self.capture.window_title)
             time.sleep(0.3)
             self.ensure_is_in_party()
+        else:
+            # macOS: click once inside the game window to bring it to foreground
+            try:
+                center_x = self.cfg["game_window"]["size"][1] // 2
+                center_y = (
+                    self.cfg["game_window"]["size"][0] // 2
+                    + self.cfg["game_window"]["title_bar_height"]
+                )
+                click_in_game_window(self.capture.window_title, (center_x, center_y))
+                time.sleep(0.3)
+                # Ensure party red bar becomes available for player localization
+                self.ensure_is_in_party()
+            except Exception as e:
+                logger.warning(f"[loop] macOS init focus/party failed: {e}")
 
         while not self.kb.is_terminated:
 
@@ -1776,11 +1831,21 @@ class MapleStoryAutoBot:
             if ret == 0:
                 # Draw image on debug window
                 if self.is_show_debug_window and self.is_ui:
-                    img_frame_debug_emit = self.img_frame_debug[:
-                        self.cfg["ui_coords"]["ui_y_start"], :].copy()
-                    img_route_debug_emit = self.img_route_debug.copy()
-                    self.image_debug_signal.emit(img_frame_debug_emit)
-                    self.route_map_viz_signal.emit(img_route_debug_emit)
+                    # Emit frame debug image if available
+                    if self.img_frame_debug is not None:
+                        img_frame_debug_emit = self.img_frame_debug[
+                            : self.cfg["ui_coords"]["ui_y_start"], :
+                        ].copy()
+                        self.image_debug_signal.emit(img_frame_debug_emit)
+                    else:
+                        self.image_debug_signal.emit(None)
+
+                    # Emit route map debug image if available
+                    if self.img_route_debug is not None:
+                        img_route_debug_emit = self.img_route_debug.copy()
+                        self.route_map_viz_signal.emit(img_route_debug_emit)
+                    else:
+                        self.route_map_viz_signal.emit(None)
             else:
                 pass
                 # logger.warning("Skipped debug window update due to invalid frame.")
@@ -1804,8 +1869,17 @@ def main(args):
     #####################
     try:
         mapleStoryAutoBot = MapleStoryAutoBot(args)
+    except (ImportError, ModuleNotFoundError) as e:
+        logger.error(f"Missing required dependency for MapleStoryAutoBot: {e}")
+        sys.exit(1)
+    except (FileNotFoundError, IOError) as e:
+        logger.error(f"Required files not found for MapleStoryAutoBot: {e}")
+        sys.exit(1)
+    except (ValueError, TypeError, KeyError) as e:
+        logger.error(f"Invalid configuration for MapleStoryAutoBot: {e}")
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"MapleStoryAutoBot Init failed: {e}")
+        logger.error(f"Unexpected error during MapleStoryAutoBot init: {e}")
         sys.exit(1)
     else:
         logger.info("MapleStoryAutoBot Init Successfully")
@@ -1831,8 +1905,16 @@ def main(args):
     #####################
     try:
         mapleStoryAutoBot.start() # Start all threads in autoBot
+    except (RuntimeError, OSError) as e:
+        logger.error(f"System resource error starting MapleStoryAutoBot: {e}")
+        mapleStoryAutoBot.terminate_threads() # Terminate all threads
+        sys.exit(1)
+    except (AttributeError, TypeError) as e:
+        logger.error(f"Configuration error starting MapleStoryAutoBot: {e}")
+        mapleStoryAutoBot.terminate_threads() # Terminate all threads
+        sys.exit(1)
     except Exception as e:
-        logger.error(f"MapleStoryAutoBot start failed: {e}")
+        logger.error(f"Unexpected error starting MapleStoryAutoBot: {e}")
         mapleStoryAutoBot.terminate_threads() # Terminate all threads
         sys.exit(1)
     else:

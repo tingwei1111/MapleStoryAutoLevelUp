@@ -261,6 +261,9 @@ def draw_rectangle(img, top_left, size, color, text,
     - color: Tuple (B, G, R), color of the rectangle and text.
     - text: String to display above the rectangle.
     '''
+    # Gracefully no-op if target image is not available
+    if img is None:
+        return
     bottom_right = (top_left[0] + size[1],
                     top_left[1] + size[0])
     cv2.rectangle(img, top_left, bottom_right, color, thickness)

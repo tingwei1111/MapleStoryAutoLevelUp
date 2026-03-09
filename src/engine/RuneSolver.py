@@ -22,6 +22,11 @@ class RuneSolver:
     '''
     def __init__(self, cfg):
         self.cfg = cfg # Configuration
+        self.debug_screenshot_interval = cfg["rune_detect"].get(
+            "debug_screenshot_interval", 2.0
+        )
+        self.t_last_solve_rune_screenshot = 0.0
+        self.t_last_rune_detected_screenshot = 0.0
         # Image
         self.img_rune_warning = None
         self.img_runes = []
@@ -59,6 +64,18 @@ class RuneSolver:
 
     def reset(self):
         self.loc_rune = None
+
+    def _debug_screenshot(self, img, suffix, timer_attr):
+        '''
+        Save debug screenshot with throttling.
+        '''
+        if not self.cfg["rune_detect"]["debug"] or img is None:
+            return
+        now = time.time()
+        if now - getattr(self, timer_attr) < self.debug_screenshot_interval:
+            return
+        screenshot(img, suffix)
+        setattr(self, timer_attr, now)
 
     def solve_rune(self, img, img_debug):
         '''
@@ -135,7 +152,9 @@ class RuneSolver:
                 )
 
                 # For logging
-                screenshot(img_debug, "solve_rune")
+                self._debug_screenshot(
+                    img_debug, "solve_rune", "t_last_solve_rune_screenshot"
+                )
 
                 # Press the key for 0.5 second
                 press_key(best_direction, 0.5)
@@ -308,7 +327,9 @@ class RuneSolver:
         cv2.circle(img_debug, self.loc_rune,
                    radius=5, color=(0, 255, 255), thickness=-1)
 
-        screenshot(img_debug, "rune_detected")
+        self._debug_screenshot(
+            img_debug, "rune_detected", "t_last_rune_detected_screenshot"
+        )
 
     def arrow_hsv_binarized(self, img, low_hsv, high_hsv):
         """

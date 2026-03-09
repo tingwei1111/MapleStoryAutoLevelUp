@@ -39,8 +39,17 @@ class AutoBotController(QObject):
                 init_state='',
             )
             self.auto_bot = MapleStoryAutoBot(args)
+        except (ImportError, ModuleNotFoundError) as e:
+            logger.error(f"Missing required module for MapleStoryAutoBot: {e}")
+            sys.exit(1)
+        except (KeyError, ValueError, TypeError) as e:
+            logger.error(f"Configuration error in MapleStoryAutoBot: {e}")
+            sys.exit(1)
+        except (OSError, IOError) as e:
+            logger.error(f"File system error during MapleStoryAutoBot init: {e}")
+            sys.exit(1)
         except Exception as e:
-            logger.error(f"MapleStoryAutoBot Init Failed: {e}")
+            logger.error(f"Unexpected error during MapleStoryAutoBot init: {e}")
             sys.exit(1)
         else:
             logger.info("MapleStoryAutoBot Init Successfully")

@@ -1023,6 +1023,8 @@ class MainWindow(QMainWindow):
         if key:
             key_edit.set_key(key)
         key_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        # Store refs on the row widget for easier removal
+        row_widget.key_edit = key_edit
 
         row_layout.addWidget(label_1)
         row_layout.addWidget(key_edit)
@@ -1036,6 +1038,7 @@ class MainWindow(QMainWindow):
         cooldown_edit.setText(cooldown)
         cooldown_edit.setFixedWidth(60)
         cooldown_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        row_widget.cooldown_edit = cooldown_edit
 
         label_second = QLabel("seconds.")
         label_second.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
@@ -1078,7 +1081,7 @@ class MainWindow(QMainWindow):
 
         # Remove from tracking list
         self.buff_inputs = [
-            entry for entry in self.buff_inputs if entry[0] != row_widget
+            entry for entry in self.buff_inputs if entry[0] != getattr(row_widget, 'key_edit', None)
         ]
 
     def append_log(self, message: str, level: int):

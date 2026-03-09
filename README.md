@@ -1,6 +1,8 @@
 # Maple Story Auto Level Up
 [English](README.md) | [繁體中文](README.zh.md)
 
+Detailed usage guide (Traditional Chinese): [README.zh.md](README.zh.md#使用說明快速開始)
+
 An auto leveling up bot for Maple Story Artale
 
 <img src="media/intro2.gif" width="100%">

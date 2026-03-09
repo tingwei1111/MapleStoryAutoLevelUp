@@ -58,6 +58,68 @@
 
 注意：本專案不支援虛擬機環境，僅供娛樂與學術用途。
 
+## 使用說明（快速開始）
+
+### 1. 安裝依賴
+```bash
+pip install -r requirements.txt
+```
+
+### 2. 設定地圖與按鍵
+在 `config/config_custom.yaml`（或你自訂的設定檔）確認至少以下欄位：
+
+```yaml
+bot:
+  mode: "normal"
+  attack: "directional"
+  map: "<你的地圖名稱>"
+
+key:
+  directional_attack: "w"
+  teleport: "e"
+  jump: "space"
+  add_hp: "1"
+  add_mp: "2"
+```
+
+地圖名稱可在 `config/config_data.yaml` 查詢。
+
+### 3. 啟動（推薦 UI）
+```bash
+python -m src.main
+```
+
+在 UI 調整設定後按 `Start` 開始。
+
+### 4. 無 UI 啟動（CLI）
+```bash
+python -m src.engine.MapleStoryAutoLevelUp --cfg custom
+```
+
+常用參數：
+- `--disable_viz`：關閉除錯視窗
+- `--record`：錄製除錯畫面
+- `--disable_control`：僅偵測，不送鍵盤控制（除錯用）
+- `--debug`：顯示除錯等級 log
+
+### 5. 常用快捷鍵
+- `F1`：暫停 / 繼續
+- `F2`：截圖到 `screenshot/`
+- `F3`：開始 / 停止錄影（UI）
+- `F12`：終止腳本
+
+### 6. 效能相關設定（可選）
+以下參數可放在設定檔內調整效能與穩定性：
+
+- `system.window_region_refresh_interval_sec`：macOS 視窗區域刷新間隔（預設 `1.0` 秒）
+- `health_monitor.bar_relocate_interval`：HP/MP/EXP 重新定位間隔（預設 `2.0` 秒）
+- `rune_detect.debug_screenshot_interval`：符文 debug 截圖最小間隔（預設 `2.0` 秒）
+
+### 7. 常見問題
+- 抓不到角色位置：確認你已開啟小地圖，且角色上方有隊伍紅條。
+- 視窗尺寸錯誤：請用視窗模式，並使用設定檔期望的解析度。
+- 指令沒反應：確認遊戲視窗在前景，並檢查按鍵綁定是否與遊戲內一致。
+
 ## 支援的 MapleStory 版本
 本專案主要在 MapleStory Artale Taiwan與Global伺服器開發與測試。
 

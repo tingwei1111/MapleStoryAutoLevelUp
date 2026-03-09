@@ -35,6 +35,7 @@ class HealthMonitor:
         self.t_last_hp_reduce = 0
         self.t_last_run = 0
         self.t_hp_watch_dog = time.time()
+        self.t_last_bar_relocate = 0
 
         # Frame data (will be updated by main thread)
         self.img_frame = None
@@ -42,6 +43,9 @@ class HealthMonitor:
 
         # FPS settings
         self.fps_limit = self.cfg["health_monitor"]["fps_limit"]
+        self.bar_relocate_interval = self.cfg["health_monitor"].get(
+            "bar_relocate_interval", 2.0
+        )
         self.fps = 0
 
         # Debug information
@@ -89,6 +93,52 @@ class HealthMonitor:
         with self.frame_lock:
             self.img_frame = img_frame
 
+    def _is_valid_bar_regions(self, img_shape):
+        '''
+        Check whether cached bar rectangles are valid for current frame.
+        '''
+        h_img, w_img = img_shape[:2]
+        for x, y, w, h in self.loc_size_bars:
+            if w <= 0 or h <= 0:
+                return False
+            if x < 0 or y < 0 or x + w > w_img or y + h > h_img:
+                return False
+        return True
+
+    def _get_percent_from_regions(self, img_frame, loc_size_bars):
+        '''
+        Compute bar percentages from cached or newly detected rectangles.
+        '''
+        percent_bars = []
+        for x, y, w, h in loc_size_bars:
+            percent_bars.append(get_bar_percent(img_frame[y:y+h, x:x+w]))
+        return percent_bars
+
+    def _detect_bar_regions(self, img_frame):
+        '''
+        Detect HP/MP/EXP bar regions from current frame.
+        '''
+        img_frame_gray = cv2.cvtColor(img_frame, cv2.COLOR_BGR2GRAY)
+        white_mask = cv2.inRange(img_frame_gray, 240, 255)
+        contours, _ = cv2.findContours(
+            white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        loc_size_bars = []
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if h == 0:
+                continue
+            # for game window resolution 752x1282, w/h == 7.5, w*h == 3630
+            if 4 < w/h < 10 and 2500 < w*h < 5000:
+                loc_size_bars.append((x, y, w, h))
+
+        # sort contours by x coordinate
+        loc_size_bars = sorted(loc_size_bars, key=lambda bar: bar[0])
+        if len(loc_size_bars) != 3:
+            return None
+        return loc_size_bars
+
     def get_hp_mp_exp_percent(self):
         '''
         Extracts the player's HP, MP, and EXP ratios from game frame.
@@ -107,32 +157,24 @@ class HealthMonitor:
         with self.frame_lock:
             img_frame = self.img_frame.copy()
 
-        img_frame_gray = cv2.cvtColor(img_frame, cv2.COLOR_BGR2GRAY)
-        white_mask = cv2.inRange(img_frame_gray, 240, 255)
-        # cv2.imshow("white_mask", white_mask)
+        has_cached_regions = self._is_valid_bar_regions(img_frame.shape)
+        t_cur = time.time()
+        need_relocate = (
+            (not has_cached_regions) or
+            (t_cur - self.t_last_bar_relocate >= self.bar_relocate_interval)
+        )
 
-        contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if need_relocate:
+            loc_size_bars = self._detect_bar_regions(img_frame)
+            if loc_size_bars is not None:
+                self.loc_size_bars = loc_size_bars
+                self.t_last_bar_relocate = t_cur
+                return self._get_percent_from_regions(img_frame, loc_size_bars)
 
-        loc_size_bars = []
-        for cnt in contours:
-            x, y, w, h = cv2.boundingRect(cnt)
-            # for game window resolution 752x1282, w/h == 7.5, w*h == 3630
-            if 4 < w/h < 10 and 2500 < w*h < 5000:
-                loc_size_bars.append((x, y, w, h))
+        if has_cached_regions:
+            return self._get_percent_from_regions(img_frame, self.loc_size_bars)
 
-        # sort contours by x coordinate
-        loc_size_bars = sorted(loc_size_bars, key=lambda bar: bar[0])
-        if len(loc_size_bars) != 3:
-            return (None, None, None)
-
-        # Update loc_size_bars
-        self.loc_size_bars = loc_size_bars
-
-        # Get bar filled ratio
-        percent_bars = []
-        for x, y, w, h in loc_size_bars:
-            percent_bars.append(get_bar_percent(img_frame[y:y+h, x:x+w]))
-        return percent_bars
+        return (None, None, None)
 
     def _monitor_loop(self):
         '''
@@ -215,8 +257,12 @@ class HealthMonitor:
         '''
         try:
             press_key(self.cfg["key"]["add_hp"], 0.05)
+        except (KeyError, ValueError) as e:
+            logger.error(f"[Health Monitor] Invalid heal key configuration: {e}")
+        except (OSError, RuntimeError) as e:
+            logger.error(f"[Health Monitor] Heal action system error: {e}")
         except Exception as e:
-            logger.error(f"[Health Monitor] Heal action failed: {e}")
+            logger.error(f"[Health Monitor] Unexpected heal action error: {e}")
 
     def _add_mp(self):
         '''
@@ -224,8 +270,12 @@ class HealthMonitor:
         '''
         try:
             press_key(self.cfg["key"]["add_mp"], 0.05)
+        except (KeyError, ValueError) as e:
+            logger.error(f"[Health Monitor] Invalid MP key configuration: {e}")
+        except (OSError, RuntimeError) as e:
+            logger.error(f"[Health Monitor] MP action system error: {e}")
         except Exception as e:
-            logger.error(f"[Health Monitor] MP action failed: {e}")
+            logger.error(f"[Health Monitor] Unexpected MP action error: {e}")
 
     def limit_fps(self):
         '''

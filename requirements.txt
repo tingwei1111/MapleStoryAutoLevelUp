@@ -1,6 +1,7 @@
 opencv-python
 numpy
 pyautogui
+pygetwindow
 pynput
 requests
 pyyaml
@@ -9,4 +10,5 @@ ruamel.yaml
 pyinstaller
 pywin32; sys_platform == "win32"
 windows-capture ; sys_platform == "win32"
-pyobjc-framework-Quartz ; sys_platform == "darwin" # TODO: dev macOS in another branch
+mss ; sys_platform == "darwin"
+pyobjc-framework-Quartz ; sys_platform == "darwin"
